@@ -1,79 +1,33 @@
 import { config } from 'dotenv';
 
-// Load environment variables
 config();
 
+/**
+ * Medium auth.
+ *
+ * Medium's official API is deprecated: new integration tokens can no longer be
+ * created, and the OAuth app flow is limited to existing integrations. If you
+ * already have an integration token, set MEDIUM_INTEGRATION_TOKEN and it will
+ * be sent as a Bearer token.
+ *
+ * Logging goes to stderr only; stdout is reserved for the MCP protocol.
+ */
 class MediumAuth {
-  private clientId: string;
-  private clientSecret: string;
-  private accessToken: string | null = null;
+  private accessToken: string;
 
   constructor() {
-    // Validate credentials from environment
-    this.clientId = this.validateCredential('MEDIUM_CLIENT_ID');
-    this.clientSecret = this.validateCredential('MEDIUM_CLIENT_SECRET');
-  }
-
-  private validateCredential(key: string): string {
-    const value = process.env[key];
-    if (!value) {
-      this.logSecurityAlert(`Missing critical credential: ${key}`);
-      throw new Error(`🚨 Security Alert: Missing ${key} in environment variables`);
+    const token = process.env.MEDIUM_INTEGRATION_TOKEN;
+    if (!token) {
+      throw new Error(
+        'MEDIUM_INTEGRATION_TOKEN is not set. Medium no longer issues new API tokens; ' +
+          'this server only works with an existing integration token. See README.'
+      );
     }
-    return value;
-  }
-
-  public async authenticate(): Promise<void> {
-    try {
-      // This is a placeholder for actual Medium OAuth flow
-      // In a real implementation, you'd:
-      // 1. Request authorization code from Medium
-      // 2. Exchange authorization code for access token
-      // 3. Store and refresh the access token
-      
-      // Simulate authentication (replace with actual OAuth implementation)
-      this.accessToken = await this.requestAccessToken();
-
-      this.logAuthSuccess();
-    } catch (error) {
-      this.handleAuthenticationFailure(error);
-    }
-  }
-
-  private async requestAccessToken(): Promise<string> {
-    // Placeholder for OAuth token request
-    // You'll need to implement the actual Medium OAuth 2.0 flow here
-    
-    // Simulated token for demo purposes
-    return `medium_token_${Date.now()}`;
+    this.accessToken = token;
   }
 
   public getAccessToken(): string {
-    if (!this.accessToken) {
-      this.logSecurityAlert('Unauthorized access token request');
-      throw new Error('🔒 Authentication Required: Call authenticate() first');
-    }
     return this.accessToken;
-  }
-
-  private logAuthSuccess() {
-    console.log(`
-    ✅ Medium Authentication Successful
-    🕒 Timestamp: ${new Date().toISOString()}
-    `);
-  }
-
-  private logSecurityAlert(message: string) {
-    console.error(`
-    ⚠️ SECURITY ALERT ⚠️
-    Message: ${message}
-    Timestamp: ${new Date().toISOString()}
-    `);
-  }
-
-  private handleAuthenticationFailure(error: any) {
-    this.logSecurityAlert(`Authentication Failed: ${error.message}`);
-    throw new Error(`🚫 Medium Authentication Failed: ${error.message}`);
   }
 }
 

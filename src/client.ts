@@ -1,101 +1,84 @@
 import axios from 'axios';
-import MediumAuth from './auth';
+import MediumAuth from './auth.js';
 
-interface PublishArticleParams {
+export interface CreatePostParams {
   title: string;
   content: string;
+  contentFormat?: 'markdown' | 'html';
   tags?: string[];
   publicationId?: string;
+  publishStatus?: 'draft' | 'public' | 'unlisted';
+  canonicalUrl?: string;
 }
 
-interface SearchArticlesParams {
-  keywords?: string[];
-  publicationId?: string;
-  tags?: string[];
-}
-
+/**
+ * Thin client for the endpoints Medium's (deprecated) v1 API actually has:
+ * GET /me, GET /users/{userId}/publications, POST /users/{userId}/posts,
+ * POST /publications/{publicationId}/posts. There is no search or read-posts
+ * endpoint in the official API.
+ */
 class MediumClient {
   private auth: MediumAuth;
   private baseUrl = 'https://api.medium.com/v1';
+  private userId: string | null = null;
 
   constructor(auth: MediumAuth) {
     this.auth = auth;
   }
 
-  private async makeRequest(method: 'get' | 'post', endpoint: string, data?: any) {
+  private async request(method: 'get' | 'post', endpoint: string, data?: unknown) {
     try {
       const response = await axios({
         method,
         url: `${this.baseUrl}${endpoint}`,
         headers: {
-          'Authorization': `Bearer ${this.auth.getAccessToken()}`,
+          Authorization: `Bearer ${this.auth.getAccessToken()}`,
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          Accept: 'application/json',
+          'Accept-Charset': 'utf-8'
         },
         data
       });
-      return response.data;
+      return response.data?.data ?? response.data;
     } catch (error: any) {
-      console.error('Medium API Error:', error.response?.data || error.message);
-      throw error;
+      const detail = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+      console.error('Medium API error:', detail);
+      throw new Error(detail);
     }
-  }
-
-  async publishArticle(params: PublishArticleParams) {
-    return this.makeRequest('post', '/publications', {
-      title: params.title,
-      contentFormat: 'markdown',
-      content: params.content,
-      tags: params.tags,
-      publishStatus: 'draft'
-    });
-  }
-
-  async getUserPublications() {
-    return this.makeRequest('get', '/publications');
-  }
-
-  async searchArticles(params: SearchArticlesParams) {
-    const queryParams = new URLSearchParams();
-    
-    if (params.keywords) {
-      params.keywords.forEach(keyword => 
-        queryParams.append('q', keyword)
-      );
-    }
-
-    if (params.publicationId) {
-      queryParams.append('publicationId', params.publicationId);
-    }
-
-    if (params.tags) {
-      params.tags.forEach(tag => 
-        queryParams.append('tag', tag)
-      );
-    }
-
-    return this.makeRequest('get', `/articles?${queryParams.toString()}`);
-  }
-
-  async getDrafts() {
-    return this.makeRequest('get', '/drafts');
   }
 
   async getUserProfile() {
-    return this.makeRequest('get', '/me');
+    return this.request('get', '/me');
   }
 
-  async createDraft(params: { 
-    title: string, 
-    content: string, 
-    tags?: string[] 
-  }) {
-    return this.makeRequest('post', '/drafts', {
+  private async getUserId(): Promise<string> {
+    if (!this.userId) {
+      const me = await this.getUserProfile();
+      this.userId = me.id as string;
+    }
+    return this.userId;
+  }
+
+  async getUserPublications() {
+    const userId = await this.getUserId();
+    return this.request('get', `/users/${userId}/publications`);
+  }
+
+  /** Creates a post. Defaults to a draft so nothing goes public by accident. */
+  async createPost(params: CreatePostParams) {
+    const body = {
       title: params.title,
-      contentFormat: 'markdown',
+      contentFormat: params.contentFormat ?? 'markdown',
       content: params.content,
-      tags: params.tags
-    });
+      tags: params.tags?.slice(0, 5),
+      canonicalUrl: params.canonicalUrl,
+      publishStatus: params.publishStatus ?? 'draft'
+    };
+    if (params.publicationId) {
+      return this.request('post', `/publications/${params.publicationId}/posts`, body);
+    }
+    const userId = await this.getUserId();
+    return this.request('post', `/users/${userId}/posts`, body);
   }
 }
 
